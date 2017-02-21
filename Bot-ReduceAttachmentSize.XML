@@ -1,0 +1,114 @@
+<XML ID="{4AE0010F-B62D-4A27-B137-74F578498072}" Type="Bots">
+	<data Code="Reduce Attachment Size" ID="{D61B1DCC-267F-418D-927E-E520C17ABCA9}">
+		<Name Value="Reduce Attachment Size"/>
+		<Description Value="Reduce Attachment Size"/>
+		<MacroType Value="Record Loop"/>
+		<EnableResults Value="False"/>
+		<Shortcut/>
+		<RecordType/>
+		<RunFrom Value="Invoices (Accounts Payable)">
+			<item Code="Invoices (Accounts Payable)" ID="{5C0FA2D5-3871-43ED-BC1F-B4DE2E3001B8}" Assigned="True"/>
+		</RunFrom>
+		<Using/>
+		<MacroScript>
+
+count = data.Attachments.Count
+if count &gt; 0 then
+    For i=1 to data.Attachments.Count
+        attachment = LCase(data.Attachments.item(i))
+        if fso.GetExtensionName(attachment) = "pdf" then
+            'save out to a temp file
+            temp = fso.GetAbsolutePathName(data.Attachments.SaveAsTempFile(i))
+            success = ProcessAttachment(temp, attachment, i)
+            if success then 
+                RecordLoop.AddMessage "Processed: " &amp; attachment
+            else
+                RecordLoop.AddMessage "Unable to process " &amp; attachment
+            end if
+        end if
+    Next
+end if
+
+'CreateCompressedFile - Process the input pdf with GhostScript
+'   input  = full path of the file that will be used for compression
+'   output = full path and name of output file
+function CreateCompressedFile(input, output)
+    Dim objShell
+    Set objShell = CreateObject("WScript.Shell") 
+    objShell.run "cmd /c", 0 , True
+    objShell.run """C:\Program Files (x86)\gs\gs9.19\bin\gswin32c.exe""" &amp; _
+        " -sDEVICE=pdfwrite" &amp; _
+        " -dCompatibilityLevel=1.4" &amp; _
+        " -dPDFSETTINGS=" &amp; pdfQuality &amp; _
+        " -dNOPAUSE" &amp; _
+        " -dQUIET" &amp; _
+        " -dDetectDuplicateImages" &amp; _ 
+        " -dCompressFonts=true" &amp; _
+        " -r150" &amp; _ 
+        " -dBATCH" &amp; _
+        " -sOutputFile=""" &amp; output &amp; """ """ &amp; input &amp; """", 0, True
+    CreateCompressedFile = fso.FileExists(output)
+end function
+
+'ProcessAttachment
+'   input          = full path of the file that will be used for compression
+'   attachmentName = name of the attachment being processed
+'   attachment     = index of the attachment being processed
+function ProcessAttachment(input, attachmentName, attachment)
+    output = fso.BuildPath(fso.GetParentFolderName(input), attachmentName)
+'   try to get a compressed version of our input pdf  
+    compressed = CreateCompressedFile(input, output)
+    if compressed then
+        if createBackup then
+            data.Attachments.Rename data.Attachments.Add(input), backupFilenamePrefix &amp; "-" &amp; attachmentName
+        end if
+        data.Attachments.Replace attachment, output
+    end if
+    ProcessAttachment = compressed
+end function
+</MacroScript>
+		<MacroScriptInit>'Script to reduce the size of PDF attachments
+'   A GhostScript command is executed on each PDF. The output of the command ends up
+'   replacing the original pdf attachment. The original attachment is either renamed
+'   or removed based on settings below.
+
+'Requirements:
+'   GhostScript 9.19 - https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs919/gs919w32.exe
+
+'Change the following variables as needed
+'---------------------------------------------------------------------------------------------------------------
+' createBackup: 
+'   true  - save the original as "&lt;backupFilenamePrefix&gt;-&lt;filename&gt;"
+'   false - do not keep the original file
+const createBackup = false
+
+'backupFilenamePrefix
+'   if createBackup is set to true, backup filenames will be prefixed with the value of the variable
+const backupFilenamePrefix = "backup"
+
+' pdfQuality:
+'   "/screen"  - selects low-resolution output similar to the Acrobat Distiller "Screen Optimized" setting.
+'   "/ebook"   - selects medium-resolution output similar to the Acrobat Distiller "eBook" setting. (recommended)
+'   "/printer" - selects output similar to the Acrobat Distiller "Print Optimized" setting.
+const pdfQuality = "/ebook"
+'---------------------------------------------------------------------------------------------------------------
+
+dim data, fso
+set data = RecordLoop.Data
+set fso = CreateObject("Scripting.FileSystemObject")
+</MacroScriptInit>
+		<MacroScriptFinal/>
+		<AccessControl Value="All"/>
+		<Permissions/>
+		<Obsolete Value="False"/>
+		<Memo>This Bot uses a program called GhostScript to change the resolution of a PDF files attached to the selected AP Invoices.
+
+Requirements:
+   GhostScript 9.19 available at:
+   https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs919/gs919w32.exe</Memo>
+		<CreateDate Value="2017-01-30T15:45:39.063"/>
+		<CreateUser Value="pjohnston"/>
+		<ReviseDate Value="2017-02-21T10:42:54.520"/>
+		<ReviseUser Value="pjohnston"/>
+	</data>
+</XML>
